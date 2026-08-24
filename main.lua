@@ -5,7 +5,9 @@
 -- Detects game, loads library, builds built-in tabs, injects game-specific tab
 
 local HttpGet = game.HttpGet
-local BASE_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/main/"
+-- Two-repo separation: library lives in DataBase, hub files in Re-Hub.
+local LIB_URL = "https://raw.githubusercontent.com/Whotong/DataBase/main/ReHubLib.lua"
+local REPO_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/main/"
 
 -- ═══════════════════════════════════════════
 -- WAIT FOR GAME LOAD
@@ -15,7 +17,7 @@ repeat task.wait() until game:IsLoaded()
 -- ═══════════════════════════════════════════
 -- LOAD GUI LIBRARY
 -- ═══════════════════════════════════════════
-local Library = loadstring(HttpGet(game, BASE_URL .. "DataBase/ReHubLib.lua"))()
+local Library = loadstring(HttpGet(game, LIB_URL))()
 
 -- ═══════════════════════════════════════════
 -- CREATE WINDOW
@@ -112,23 +114,22 @@ local SettingsTab = Window:MakeTab("Settings") do
 		Flag = "ReHub/Notifications"
 	})
 
+	local antiIdleConn = nil
 	General:Toggle({
 		Title = "Anti-Idle",
 		Content = "Prevent automatic kick on idle",
 		Default = true,
 		Callback = function(v)
-			if v then
-				task.spawn(function()
-					while v do
-						Players.LocalPlayer.Idled:Connect(function()
-							local VirtualUser = game:GetService("VirtualUser")
-							VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-							task.wait(1)
-							VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-						end)
-						task.wait(1)
-					end
+			if v and not antiIdleConn then
+				antiIdleConn = LocalPlayer.Idled:Connect(function()
+					local VirtualUser = game:GetService("VirtualUser")
+					VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+					task.wait(1)
+					VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
 				end)
+			elseif not v and antiIdleConn then
+				antiIdleConn:Disconnect()
+				antiIdleConn = nil
 			end
 		end,
 		Flag = "ReHub/AntiIdle"
@@ -138,17 +139,12 @@ local SettingsTab = Window:MakeTab("Settings") do
 
 	Visuals:Dropdown({
 		Title = "Theme Accent",
-		Options = { "Green", "Blue", "Red", "Purple", "Orange" },
-		Default = { "Green" },
+		Options = Library:GetThemeNames(),
+		Default = { "Violet" },
 		Callback = function(v)
-			local themeColors = {
-				Green = Color3.fromRGB(0, 230, 118),
-				Blue = Color3.fromRGB(33, 150, 243),
-				Red = Color3.fromRGB(244, 67, 54),
-				Purple = Color3.fromRGB(156, 39, 176),
-				Orange = Color3.fromRGB(255, 152, 0),
-			}
-			-- Theme change would require library support; placeholder
+			if type(v) == "string" then
+				Library:SetTheme(v)
+			end
 		end
 	})
 
@@ -158,7 +154,9 @@ local SettingsTab = Window:MakeTab("Settings") do
 		Max = 100,
 		Increment = 5,
 		Default = 0,
-		Callback = function(v) end
+		Callback = function(v)
+			Library:SetTransparency(v)
+		end
 	})
 
 	local Advanced = SettingsTab:Section({ Title = "Advanced" })
@@ -183,13 +181,13 @@ end
 -- ═══════════════════════════════════════════
 -- GAME DETECTION & INJECTION
 -- ═══════════════════════════════════════════
-local Games = loadstring(HttpGet(game, BASE_URL .. "Re-Hub/gamelist.lua"))()
+local Games = loadstring(HttpGet(game, REPO_URL .. "gamelist.lua"))()
 local gameEntry = Games[game.GameId]
 
 if gameEntry then
 	if typeof(gameEntry) == "string" then
-		-- Repo-relative path — prepend BASE_URL, fetch and execute, passing Window
-		local gameScript = loadstring(HttpGet(game, BASE_URL .. gameEntry))
+		-- Repo-relative path — prepend REPO_URL, fetch and execute, passing Window
+		local gameScript = loadstring(HttpGet(game, REPO_URL .. gameEntry))
 		if gameScript then
 			gameScript(Window)
 		end
