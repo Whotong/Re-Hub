@@ -6,7 +6,7 @@
 
 local HttpGet = game.HttpGet
 -- Two-repo separation: library lives in DataBase, hub files in Re-Hub.
-local LIB_URL = "https://raw.githubusercontent.com/Whotong/DataBase/main/ReHubLib.lua"
+local LIB_URL = "https://raw.githubusercontent.com/Whotong/DataBase/main/Library/ReHubLib.lua"
 local REPO_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/main/"
 
 -- ═══════════════════════════════════════════
@@ -98,6 +98,30 @@ local HomeTab = Window:MakeTab("Home") do
 			end
 		end
 	})
+
+	Info:Seperator("Keybind")
+
+	local keybindPara = Info:Paragraph({
+		Title = "Toggle UI: " .. Window:GetToggleKey().Name,
+		Content = "Press this key to show or hide the hub"
+	})
+
+	Info:Button({
+		Title = "Change Keybind",
+		Content = "Press any key within 5 seconds",
+		Callback = function()
+			Library:Notify({ Title = "Re: Hub", Content = "Press any key to set the toggle key...", Delay = 5 })
+			Window:CaptureNextKey(function(key)
+				if key then
+					Window:SetToggleKey(key)
+					keybindPara:Set({ Title = "Toggle UI: " .. key.Name, Content = "Press this key to show or hide the hub" })
+					Library:Notify({ Title = "Re: Hub", Content = "Toggle key set to " .. key.Name, Delay = 3 })
+				else
+					Library:Notify({ Title = "Re: Hub", Content = "Keybind capture timed out", Delay = 3 })
+				end
+			end)
+		end
+	})
 end
 
 -- ═══════════════════════════════════════════
@@ -118,7 +142,7 @@ local SettingsTab = Window:MakeTab("Settings") do
 	General:Toggle({
 		Title = "Anti-Idle",
 		Content = "Prevent automatic kick on idle",
-		Default = true,
+		Default = false,
 		Callback = function(v)
 			if v and not antiIdleConn then
 				antiIdleConn = LocalPlayer.Idled:Connect(function()
