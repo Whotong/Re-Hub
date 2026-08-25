@@ -1,11 +1,11 @@
 --!strict
 -- Re: Hub — Main Loader
 -- RULE: All files must be linked via loadstring(game:HttpGet(...)).
---       No inlined code. Every dependency is fetched at runtime from BASE_URL.
--- Detects game, loads library, builds built-in tabs, injects game-specific tab
+--       No inlined code. Every dependency is fetched at runtime.
+-- Two-repo separation: library lives in DataBase, hub files in Re-Hub.
+-- Flow: Home → game detection (injects Main/Misc pages) → Settings (always last)
 
 local HttpGet = game.HttpGet
--- Two-repo separation: library lives in DataBase, hub files in Re-Hub.
 local LIB_URL = "https://raw.githubusercontent.com/Whotong/DataBase/main/Library/ReHubLib.lua"
 local REPO_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/main/"
 
@@ -24,7 +24,6 @@ local Library = loadstring(HttpGet(game, LIB_URL))()
 -- ═══════════════════════════════════════════
 local Window = Library:Start({
 	Name = "Re: Hub",
-	Color = Color3.fromRGB(0, 230, 118),
 	SaveFolder = "Re-Hub",
 	CloseCallBack = function()
 		-- Cleanup on close
@@ -36,9 +35,12 @@ local Window = Library:Start({
 -- ═══════════════════════════════════════════
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
+
+-- Shared teardown state (referenced by OnClose, mutated by Settings controls)
+local hubRunning = true
+local antiIdleConn = nil
 
 -- ═══════════════════════════════════════════
 -- HOME TAB
@@ -58,7 +60,7 @@ local HomeTab = Window:MakeTab("Home") do
 		Content = "Loading..."
 	})
 	task.spawn(function()
-		while task.wait(3) do
+		while hubRunning and task.wait(3) do
 			local count = #Players:GetPlayers()
 			PlayerCount:Set({ Title = "Players", Content = tostring(count) .. " online" })
 		end
@@ -69,7 +71,7 @@ local HomeTab = Window:MakeTab("Home") do
 		Content = ""
 	})
 	task.spawn(function()
-		while task.wait(2) do
+		while hubRunning and task.wait(2) do
 			ServerTime:Set({ Title = "Server Time", Content = tostring(Lighting.TimeOfDay) })
 		end
 	end)
@@ -125,7 +127,56 @@ local HomeTab = Window:MakeTab("Home") do
 end
 
 -- ═══════════════════════════════════════════
--- SETTINGS TAB
+-- HUB TEARDOWN
+-- ═══════════════════════════════════════════
+Window:OnClose(function()
+	hubRunning = false
+	if antiIdleConn then
+		antiIdleConn:Disconnect()
+		antiIdleConn = nil
+	end
+end)
+
+-- ═══════════════════════════════════════════
+-- GAME DETECTION & INJECTION
+-- Game scripts fill the standard Main/Misc pages: gameScript(Window, Tabs)
+-- ═══════════════════════════════════════════
+local gameLoaded, gameErr = pcall(function()
+	local Games = loadstring(HttpGet(game, REPO_URL .. "gamelist.lua"))()
+	local gameEntry = Games[game.GameId]
+
+	if not gameEntry then return end -- unsupported game: silent exit
+
+	if typeof(gameEntry) == "function" then
+		-- Inline function (legacy contract: Window only)
+		gameEntry(Window)
+		return
+	end
+	if typeof(gameEntry) ~= "string" then return end -- true = supported, no script yet
+
+	local Tabs = {
+		Main = Window:MakeTab("Main"),
+		Misc = Window:MakeTab("Misc"),
+	}
+
+	local src = HttpGet(game, REPO_URL .. gameEntry)
+	local gameScript = loadstring(src)
+	if not gameScript then
+		error("compile failed: " .. gameEntry)
+	end
+	gameScript(Window, Tabs)
+end)
+
+if not gameLoaded then
+	Library:Notify({
+		Title = "Re: Hub",
+		Content = "Game script failed: " .. tostring(gameErr),
+		Delay = 8,
+	})
+end
+
+-- ═══════════════════════════════════════════
+-- SETTINGS TAB (built last → order: Home, Main, Misc, Settings)
 -- ═══════════════════════════════════════════
 local SettingsTab = Window:MakeTab("Settings") do
 	local General = SettingsTab:Section({ Title = "General" })
@@ -138,7 +189,6 @@ local SettingsTab = Window:MakeTab("Settings") do
 		Flag = "ReHub/Notifications"
 	})
 
-	local antiIdleConn = nil
 	General:Toggle({
 		Title = "Anti-Idle",
 		Content = "Prevent automatic kick on idle",
@@ -200,26 +250,6 @@ local SettingsTab = Window:MakeTab("Settings") do
 			game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
 		end
 	})
-end
-
--- ═══════════════════════════════════════════
--- GAME DETECTION & INJECTION
--- ═══════════════════════════════════════════
-local Games = loadstring(HttpGet(game, REPO_URL .. "gamelist.lua"))()
-local gameEntry = Games[game.GameId]
-
-if gameEntry then
-	if typeof(gameEntry) == "string" then
-		-- Repo-relative path — prepend REPO_URL, fetch and execute, passing Window
-		local gameScript = loadstring(HttpGet(game, REPO_URL .. gameEntry))
-		if gameScript then
-			gameScript(Window)
-		end
-	elseif typeof(gameEntry) == "function" then
-		-- Inline function
-		gameEntry(Window)
-	end
-	-- gameEntry == true means supported but no script yet (silent)
 end
 
 return Library
