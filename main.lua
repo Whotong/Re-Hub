@@ -239,7 +239,7 @@ local SettingsTab = Window:MakeTab("Settings") do
 		Title = "Destroy UI",
 		Content = "Completely remove Re: Hub",
 		Callback = function()
-			Library:CloseUI()
+			Window:CloseUI()
 		end
 	})
 
