@@ -160,7 +160,9 @@ local gameLoaded, gameErr = pcall(function()
 		Misc = Window:MakeTab("Misc"),
 	}
 
-	local src = HttpGet(game, REPO_URL .. gameEntry)
+	-- Full URLs pass through untouched; relative paths resolve against REPO_URL
+	local scriptUrl = (gameEntry:sub(1, 4) == "http") and gameEntry or (REPO_URL .. gameEntry)
+	local src = HttpGet(game, scriptUrl)
 	local gameScript = loadstring(src)
 	if not gameScript then
 		error("compile failed: " .. gameEntry)
