@@ -139,7 +139,7 @@ end)
 
 -- ═══════════════════════════════════════════
 -- GAME DETECTION & INJECTION
--- Game scripts fill the standard Main/Misc pages: gameScript(Window, Tabs)
+-- Game scripts fill the standard Main/Automation/Misc pages: gameScript(Window, Tabs)
 -- ═══════════════════════════════════════════
 local gameLoaded, gameErr = pcall(function()
 	local Games = loadstring(HttpGet(game, REPO_URL .. "gamelist.lua"))()
@@ -156,6 +156,7 @@ local gameLoaded, gameErr = pcall(function()
 
 	local Tabs = {
 		Main = Window:MakeTab("Main"),
+		Automation = Window:MakeTab("Automation"),
 		Misc = Window:MakeTab("Misc"),
 	}
 
