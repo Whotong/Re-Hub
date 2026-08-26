@@ -9,6 +9,11 @@ local HttpGet = game.HttpGet
 local LIB_URL = "https://raw.githubusercontent.com/Whotong/DataBase/main/Library/ReHubLib.lua"
 local REPO_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/main/"
 
+-- Cache-buster: executor/CDN caches can serve stale bodies per-URL.
+local function fresh(url: string): string
+	return url .. "?cb=" .. math.floor(tick() * 1000)
+end
+
 -- ═══════════════════════════════════════════
 -- WAIT FOR GAME LOAD
 -- ═══════════════════════════════════════════
@@ -17,7 +22,7 @@ repeat task.wait() until game:IsLoaded()
 -- ═══════════════════════════════════════════
 -- LOAD GUI LIBRARY
 -- ═══════════════════════════════════════════
-local Library = loadstring(HttpGet(game, LIB_URL))()
+local Library = loadstring(HttpGet(game, fresh(LIB_URL)))()
 
 -- ═══════════════════════════════════════════
 -- CREATE WINDOW
@@ -142,7 +147,7 @@ end)
 -- Game scripts fill the standard Main/Automation/Misc pages: gameScript(Window, Tabs)
 -- ═══════════════════════════════════════════
 local gameLoaded, gameErr = pcall(function()
-	local Games = loadstring(HttpGet(game, REPO_URL .. "gamelist.lua"))()
+	local Games = loadstring(HttpGet(game, fresh(REPO_URL .. "gamelist.lua")))()
 	local gameEntry = Games[game.GameId]
 
 	if not gameEntry then return end -- unsupported game: silent exit
@@ -162,7 +167,7 @@ local gameLoaded, gameErr = pcall(function()
 
 	-- Full URLs pass through untouched; relative paths resolve against REPO_URL
 	local scriptUrl = (gameEntry:sub(1, 4) == "http") and gameEntry or (REPO_URL .. gameEntry)
-	local src = HttpGet(game, scriptUrl)
+	local src = HttpGet(game, fresh(scriptUrl))
 	local gameScript = loadstring(src)
 	if not gameScript then
 		error("compile failed: " .. gameEntry)
