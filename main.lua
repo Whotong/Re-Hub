@@ -20,6 +20,41 @@ end
 repeat task.wait() until game:IsLoaded()
 
 -- ═══════════════════════════════════════════
+-- SINGLE INSTANCE — shut down any previous load first
+-- A re-run loadstring builds a fresh Library/Window while the old chunk's
+-- loops and GUI stay alive. The previous instance registers its full
+-- teardown (CloseUI: OnClose handlers, GUI, input) here via getgenv,
+-- which is shared across chunks. Stale-GUI sweep covers instances that
+-- predate this guard. Feature-detected per 3.7: no getgenv, sweep only.
+-- ═══════════════════════════════════════════
+local _env = (type(getgenv) == "function" and getgenv()) or {}
+if type(_env.ReHubShutdown) == "function" then
+	pcall(_env.ReHubShutdown)
+end
+do
+	local Players0 = game:GetService("Players")
+	local pg = Players0.LocalPlayer and Players0.LocalPlayer:FindFirstChild("PlayerGui")
+	local parents = { pg }
+	pcall(function()
+		if type(gethui) == "function" then
+			table.insert(parents, gethui())
+		end
+	end)
+	for _, parent in ipairs(parents) do
+		if parent then
+			for _, name in ipairs({ "ReHubGui", "ReHubNotifications" }) do
+				local inst = parent:FindFirstChild(name)
+				if inst then
+					pcall(function()
+						inst:Destroy()
+					end)
+				end
+			end
+		end
+	end
+end
+
+-- ═══════════════════════════════════════════
 -- LOAD GUI LIBRARY
 -- ═══════════════════════════════════════════
 local Library = loadstring(HttpGet(game, fresh(LIB_URL)))()
@@ -34,6 +69,15 @@ local Window = Library:Start({
 		-- Cleanup on close
 	end
 })
+
+-- Register this instance's teardown for the next load (see SINGLE INSTANCE).
+if type(_env) == "table" then
+	_env.ReHubShutdown = function()
+		pcall(function()
+			Window:CloseUI()
+		end)
+	end
+end
 
 -- ═══════════════════════════════════════════
 -- SERVICES
