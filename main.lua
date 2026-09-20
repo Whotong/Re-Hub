@@ -300,17 +300,30 @@ local SettingsTab = Window:MakeTab("Settings") do
 
 	local lastErr = Advanced:Paragraph({ Title = "Diagnostics", Content = "No errors recorded" })
 
+	local function renderErrors()
+		local errs = Library:GetErrors()
+		local e = errs[#errs]
+		if e then
+			lastErr:Set({
+				Title = "Diagnostics (" .. #errs .. ") — " .. tostring(e.source),
+				Content = tostring(e.t) .. " · " .. tostring(e.message),
+			})
+		else
+			lastErr:Set({ Title = "Diagnostics", Content = "No errors recorded" })
+		end
+	end
+	renderErrors()
+	if type(Library.WatchErrors) == "function" then
+		Library:WatchErrors(function()
+			renderErrors()
+		end)
+	end
+
 	Advanced:Button({
 		Title = "Refresh Errors",
 		Content = "Show the latest recorded error",
 		Callback = function()
-			local errs = Library:GetErrors()
-			local e = errs[#errs]
-			if e then
-				lastErr:Set({ Title = "Diagnostics — " .. tostring(e.source), Content = tostring(e.t) .. " · " .. tostring(e.message) })
-			else
-				lastErr:Set({ Title = "Diagnostics", Content = "No errors recorded" })
-			end
+			renderErrors()
 		end
 	})
 
