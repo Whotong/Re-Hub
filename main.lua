@@ -226,11 +226,16 @@ local gameLoaded, gameErr = pcall(function()
 end)
 
 if not gameLoaded then
-	Library:Notify({
-		Title = "Re: Hub",
-		Content = "Game script failed: " .. tostring(gameErr),
-		Delay = 8,
-	})
+	local msg = "Game script failed: " .. tostring(gameErr)
+	if type(Library.ReportError) == "function" then
+		Library:ReportError("Loader", msg)
+	else
+		Library:Notify({
+			Title = "Re: Hub",
+			Content = msg,
+			Delay = 8,
+		})
+	end
 end
 
 -- ═══════════════════════════════════════════
@@ -292,6 +297,47 @@ local SettingsTab = Window:MakeTab("Settings") do
 	})
 
 	local Advanced = SettingsTab:Section({ Title = "Advanced" })
+
+	local lastErr = Advanced:Paragraph({ Title = "Diagnostics", Content = "No errors recorded" })
+
+	Advanced:Button({
+		Title = "Refresh Errors",
+		Content = "Show the latest recorded error",
+		Callback = function()
+			local errs = Library:GetErrors()
+			local e = errs[#errs]
+			if e then
+				lastErr:Set({ Title = "Diagnostics — " .. tostring(e.source), Content = tostring(e.t) .. " · " .. tostring(e.message) })
+			else
+				lastErr:Set({ Title = "Diagnostics", Content = "No errors recorded" })
+			end
+		end
+	})
+
+	Advanced:Button({
+		Title = "Copy Errors",
+		Content = "Copy error log for bug reports",
+		Callback = function()
+			local ok, json = pcall(function()
+				return game:GetService("HttpService"):JSONEncode(Library:GetErrors())
+			end)
+			if ok and type(setclipboard) == "function" then
+				pcall(setclipboard, json)
+				Library:Notify({ Title = "Re: Hub", Content = "Error log copied", Delay = 3 })
+			else
+				Library:Notify({ Title = "Re: Hub", Content = "Copy unavailable here", Delay = 3 })
+			end
+		end
+	})
+
+	Advanced:Button({
+		Title = "Clear Errors",
+		Content = "Empty the error log",
+		Callback = function()
+			Library:ClearErrors()
+			lastErr:Set({ Title = "Diagnostics", Content = "No errors recorded" })
+		end
+	})
 
 	Advanced:Button({
 		Title = "Destroy UI",
