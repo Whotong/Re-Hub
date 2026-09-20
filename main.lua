@@ -216,7 +216,13 @@ local gameLoaded, gameErr = pcall(function()
 	if not gameScript then
 		error("compile failed: " .. gameEntry)
 	end
-	gameScript(Window, Tabs)
+	-- Game files export their entry as `return function(Window, Tabs)`.
+	-- Calling the chunk alone only returns that function, so invoke it.
+	local gameFn = gameScript()
+	if type(gameFn) ~= "function" then
+		error("bad game export (expected function): " .. gameEntry)
+	end
+	gameFn(Window, Tabs)
 end)
 
 if not gameLoaded then
