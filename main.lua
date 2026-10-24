@@ -13,6 +13,7 @@ local LIST_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/" .. RELEASE.
 local Experiences = {
 	[10759337137] = { Title = "Last Stop [Beta]", Shortcuts = { "AutoGrab", "esp/esp-items", "recon-dashboard/refresh-counts" } },
 	[10563114921] = { Title = "Steal an Egg", Shortcuts = { "AutoCollect", "AutoHatch", "AutoClaim" } },
+	[10768292556] = { Title = "[🌱] Grow a Plant", Shortcuts = {} },
 }
 -- Supply real public URLs here when available. Empty links are omitted.
 local Links = { Discord = "", Website = "" }
