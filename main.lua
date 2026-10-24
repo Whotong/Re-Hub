@@ -4,8 +4,8 @@
 local Bootstrap = ...
 if type(Bootstrap) ~= "table" then Bootstrap = {} end
 local RELEASE = {
-	DataBase = "aacf81db8c5abecde7f81406cf9adb17aea47bc1",
-	Hub = "8269450aa452bd5e116e1d58eb1a816f96964e31",
+	DataBase = "0b7bd6e5714d4df586c0eadc60ea0c4606a3027b",
+	Hub = "c1b143195fe85831bbafc823a20d61776092f523",
 }
 local LIB_URL = "https://raw.githubusercontent.com/Whotong/DataBase/" .. RELEASE.DataBase .. "/Library/ReHubLib.lua"
 local LIST_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/" .. RELEASE.Hub .. "/gamelist.lua"
@@ -74,7 +74,7 @@ local Tabs = { Main = Window:MakeTab("Main"), Automation = Window:MakeTab("Autom
 local okGame, module = true, Bootstrap.GameModule
 if module == nil and type(entry) == "string" then okGame, module = run(entry) end
 if entry == true and module == nil then
-	Window:SetReady("Supported · no module published")
+	Window:SetReady("Interface ready · no game actions yet")
 elseif not okGame or type(module) ~= "function" then
 	local message = "Game module failed: " .. tostring(entry) .. " · " .. tostring(module)
 	warn(message)
