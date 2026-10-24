@@ -1,372 +1,95 @@
 --!strict
--- Re: Hub — Main Loader
--- RULE: All files must be linked via loadstring(game:HttpGet(...)).
---       No inlined code. Every dependency is fetched at runtime.
--- Two-repo separation: library lives in DataBase, hub files in Re-Hub.
--- Flow: Home → game detection (injects Main/Misc pages) → Settings (always last)
+-- Re: Hub — Mist. Release snapshots are immutable; see docs/design/mist.md.
+-- Optional dependency injection is for the offline harness, never saved flags.
+local Bootstrap = ...
+if type(Bootstrap) ~= "table" then Bootstrap = {} end
+local RELEASE = {
+	DataBase = "aacf81db8c5abecde7f81406cf9adb17aea47bc1",
+	Hub = "46147d3888b520f9ca9c89faae6d0d570232bda5",
+}
+local LIB_URL = "https://raw.githubusercontent.com/Whotong/DataBase/" .. RELEASE.DataBase .. "/Library/ReHubLib.lua"
+local LIST_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/" .. RELEASE.Hub .. "/gamelist.lua"
 
-local HttpGet = game.HttpGet
-local LIB_URL = "https://raw.githubusercontent.com/Whotong/DataBase/main/Library/ReHubLib.lua"
-local REPO_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/main/"
+local Experiences = {
+	[10759337137] = { Title = "Last Stop [Beta]", Shortcuts = { "AutoGrab", "esp/esp-items", "recon-dashboard/refresh-counts" } },
+	[10563114921] = { Title = "Steal an Egg", Shortcuts = { "AutoCollect", "AutoHatch", "AutoClaim" } },
+}
+-- Supply real public URLs here when available. Empty links are omitted.
+local Links = { Discord = "", Website = "" }
 
--- Cache-buster: executor/CDN caches can serve stale bodies per-URL.
-local function fresh(url: string): string
-	return url .. "?cb=" .. math.floor(tick() * 1000)
+local function pinned(url: string): boolean
+	local commit = url:match("^https://raw%.githubusercontent%.com/[^/]+/[^/]+/([%x]+)/")
+	return commit ~= nil and #commit == 40
+end
+local function run(url: string): (boolean, any)
+	if not pinned(url) then return false, "remote URL must contain a full commit hash" end
+	local ok, src = pcall(function() return game:HttpGet(url) end)
+	if not ok or type(src) ~= "string" or src == "" then return false, "fetch failed: " .. tostring(src) end
+	local fn, err = loadstring(src, "@" .. url)
+	if not fn then return false, err end
+	return pcall(fn)
 end
 
--- ═══════════════════════════════════════════
--- WAIT FOR GAME LOAD
--- ═══════════════════════════════════════════
-repeat task.wait() until game:IsLoaded()
+if not game:IsLoaded() then game.Loaded:Wait() end
+local okList, Games = true, Bootstrap.Games
+if Games == nil then okList, Games = run(LIST_URL) end
+if not okList or type(Games) ~= "table" then return end
+local entry = Games[game.GameId]
+if type(entry) ~= "string" and entry ~= true then return end -- repository requires silent unsupported exit
 
--- ═══════════════════════════════════════════
--- SINGLE INSTANCE — shut down any previous load first
--- A re-run loadstring builds a fresh Library/Window while the old chunk's
--- loops and GUI stay alive. The previous instance registers its full
--- teardown (CloseUI: OnClose handlers, GUI, input) here via getgenv,
--- which is shared across chunks. Stale-GUI sweep covers instances that
--- predate this guard. Feature-detected per 3.7: no getgenv, sweep only.
--- ═══════════════════════════════════════════
-local _env = (type(getgenv) == "function" and getgenv()) or {}
-if type(_env.ReHubShutdown) == "function" then
-	pcall(_env.ReHubShutdown)
+local okLib, Library = true, Bootstrap.Library
+if Library == nil then okLib, Library = run(LIB_URL) end
+if not okLib or type(Library) ~= "table" or Library.Version ~= "3.0.0-mist" then
+	warn("Re: Hub: Mist library unavailable at " .. LIB_URL .. ". Publish the Mist sources and refresh release pins (docs/design/mist.md).")
+	return
 end
-do
-	local Players0 = game:GetService("Players")
-	local pg = Players0.LocalPlayer and Players0.LocalPlayer:FindFirstChild("PlayerGui")
-	local parents = { pg }
-	pcall(function()
-		if type(gethui) == "function" then
-			table.insert(parents, gethui())
-		end
-	end)
-	for _, parent in ipairs(parents) do
-		if parent then
-			for _, name in ipairs({ "ReHubGui", "ReHubNotifications" }) do
-				local inst = parent:FindFirstChild(name)
-				if inst then
-					pcall(function()
-						inst:Destroy()
-					end)
-				end
-			end
-		end
-	end
+local env = {}
+if type(getgenv) == "function" then
+	local ok, value = pcall(getgenv)
+	if ok and type(value) == "table" then env = value end
 end
-
--- ═══════════════════════════════════════════
--- LOAD GUI LIBRARY
--- ═══════════════════════════════════════════
-local Library = loadstring(HttpGet(game, fresh(LIB_URL)))()
-
--- ═══════════════════════════════════════════
--- CREATE WINDOW
--- ═══════════════════════════════════════════
-local Window = Library:Start({
-	Name = "Re: Hub",
-	SaveFolder = "Re-Hub",
-	CloseCallBack = function()
-		-- Cleanup on close
-	end
-})
-
--- Register this instance's teardown for the next load (see SINGLE INSTANCE).
-if type(_env) == "table" then
-	_env.ReHubShutdown = function()
-		pcall(function()
-			Window:CloseUI()
-		end)
-	end
+if type(env.ReHub) == "table" and type(env.ReHub.Unload) == "function" then
+	local ok, err = pcall(env.ReHub.Unload)
+	if not ok then warn("Re: Hub previous unload: " .. tostring(err)) end
 end
-
--- ═══════════════════════════════════════════
--- SERVICES
--- ═══════════════════════════════════════════
-local Players = game:GetService("Players")
-local Lighting = game:GetService("Lighting")
-
-local LocalPlayer = Players.LocalPlayer
-
--- Shared teardown state (referenced by OnClose, mutated by Settings controls)
-local hubRunning = true
-local antiIdleConn = nil
-
--- ═══════════════════════════════════════════
--- HOME TAB
--- ═══════════════════════════════════════════
-local HomeTab = Window:MakeTab("Home") do
-	local Info = HomeTab:Section({ Title = "Information" })
-
-	Info:Paragraph({
-		Title = "Welcome to Re: Hub",
-		Content = "The script hub is loaded. Select a game tab to begin."
-	})
-
-	Info:Seperator("Status")
-
-	local PlayerCount = Info:Paragraph({
-		Title = "Players",
-		Content = "Loading..."
-	})
-	task.spawn(function()
-		while hubRunning and task.wait(3) do
-			local count = #Players:GetPlayers()
-			PlayerCount:Set({ Title = "Players", Content = tostring(count) .. " online" })
-		end
-	end)
-
-	local ServerTime = Info:Paragraph({
-		Title = "Server Time",
-		Content = ""
-	})
-	task.spawn(function()
-		while hubRunning and task.wait(2) do
-			ServerTime:Set({ Title = "Server Time", Content = tostring(Lighting.TimeOfDay) })
-		end
-	end)
-
-	Info:Seperator("Links")
-
-	local Discord = ""
-	Info:Button({
-		Title = "Discord",
-		Content = "Click to copy invite link",
-		Callback = function()
-			if setclipboard then
-				setclipboard(Discord)
-				Library:Notify({ Title = "Re: Hub", Content = "Discord link copied!", Delay = 3 })
-			end
-		end
-	})
-
-	Info:Button({
-		Title = "GitHub",
-		Content = "Click to copy repo link",
-		Callback = function()
-			if setclipboard then
-				setclipboard("https://github.com/Whotong/Re-Hub")
-				Library:Notify({ Title = "Re: Hub", Content = "GitHub link copied!", Delay = 3 })
-			end
-		end
-	})
-
-	Info:Seperator("Keybind")
-
-	local keybindPara = Info:Paragraph({
-		Title = "Toggle UI: " .. Window:GetToggleKey().Name,
-		Content = "Press this key to show or hide the hub"
-	})
-
-	Info:Button({
-		Title = "Change Keybind",
-		Content = "Press any key within 5 seconds",
-		Callback = function()
-			Library:Notify({ Title = "Re: Hub", Content = "Press any key to set the toggle key...", Delay = 5 })
-			Window:CaptureNextKey(function(key)
-				if key then
-					Window:SetToggleKey(key)
-					keybindPara:Set({ Title = "Toggle UI: " .. key.Name, Content = "Press this key to show or hide the hub" })
-					Library:Notify({ Title = "Re: Hub", Content = "Toggle key set to " .. key.Name, Delay = 3 })
-				else
-					Library:Notify({ Title = "Re: Hub", Content = "Keybind capture timed out", Delay = 3 })
-				end
-			end)
-		end
-	})
+-- Migrate the older instance's guard without creating another executor global.
+if type(env.ReHubShutdown) == "function" then
+	local ok, err = pcall(env.ReHubShutdown)
+	if not ok then warn("Re: Hub legacy unload: " .. tostring(err)) end
+	env.ReHubShutdown = nil
 end
-
--- ═══════════════════════════════════════════
--- HUB TEARDOWN
--- ═══════════════════════════════════════════
-Window:OnClose(function()
-	hubRunning = false
-	if antiIdleConn then
-		antiIdleConn:Disconnect()
-		antiIdleConn = nil
-	end
+local metadata = Experiences[game.GameId] or { Title = "Supported experience", Shortcuts = {} }
+local okWindow, Window = pcall(function()
+	return Library:Start({ Name = "Re: Hub", SaveFolder = "Re-Hub",
+		ExperienceName = metadata.Title, Status = "Loading available controls…", Discord = Links.Discord, Website = Links.Website })
 end)
+if not okWindow then warn("Re: Hub could not create the interface: " .. tostring(Window)) return end
+local hub = { Window = Window, Version = Library.Version }
+hub.Unload = function() Window:Unload() end
+env.ReHub = hub
+Window._environment, Window._hubState = env, hub
 
--- ═══════════════════════════════════════════
--- GAME DETECTION & INJECTION
--- Game scripts fill the standard Main/Automation/Misc pages: gameScript(Window, Tabs)
--- ═══════════════════════════════════════════
-local gameLoaded, gameErr = pcall(function()
-	local Games = loadstring(HttpGet(game, fresh(REPO_URL .. "gamelist.lua")))()
-	local gameEntry = Games[game.GameId]
-
-	if not gameEntry then return end -- unsupported game: silent exit
-
-	if typeof(gameEntry) == "function" then
-		-- Inline function (legacy contract: Window only)
-		gameEntry(Window)
-		return
-	end
-	if typeof(gameEntry) ~= "string" then return end -- true = supported, no script yet
-
-	local Tabs = {
-		Main = Window:MakeTab("Main"),
-		Automation = Window:MakeTab("Automation"),
-		Misc = Window:MakeTab("Misc"),
-	}
-
-	-- Full URLs pass through untouched; relative paths resolve against REPO_URL
-	local scriptUrl = (gameEntry:sub(1, 4) == "http") and gameEntry or (REPO_URL .. gameEntry)
-	local src = HttpGet(game, fresh(scriptUrl))
-	local gameScript = loadstring(src)
-	if not gameScript then
-		error("compile failed: " .. gameEntry)
-	end
-	-- Game files export their entry as `return function(Window, Tabs)`.
-	-- Calling the chunk alone only returns that function, so invoke it.
-	local gameFn = gameScript()
-	if type(gameFn) ~= "function" then
-		error("bad game export (expected function): " .. gameEntry)
-	end
-	gameFn(Window, Tabs)
-end)
-
-if not gameLoaded then
-	local msg = "Game script failed: " .. tostring(gameErr)
-	if type(Library.ReportError) == "function" then
-		Library:ReportError("Loader", msg)
+local Tabs = { Main = Window:MakeTab("Main"), Automation = Window:MakeTab("Automation"), Misc = Window:MakeTab("Misc") }
+local okGame, module = true, Bootstrap.GameModule
+if module == nil and type(entry) == "string" then okGame, module = run(entry) end
+if entry == true and module == nil then
+	Window:SetReady("Supported · no module published")
+elseif not okGame or type(module) ~= "function" then
+	local message = "Game module failed: " .. tostring(entry) .. " · " .. tostring(module)
+	warn(message)
+	Window:SetReady("Module unavailable · see Diagnostics")
+	Window:ReportError("Loader", message)
+else
+	local ok, err = pcall(module, Window, Tabs)
+	if Window._closed then return Library end
+	if ok then
+		-- A module can report a known prerequisite/lobby state during injection.
+		if not Window._readyText then Window:SetReady(#Window._actionOrder > 0 and "Controls ready · default off" or "No actions available in this place") end
 	else
-		Library:Notify({
-			Title = "Re: Hub",
-			Content = msg,
-			Delay = 8,
-		})
+		Window:StopAll()
+		Window:SetReady("Module error · see Diagnostics")
+		Window:ReportError("Loader", err)
 	end
 end
-
--- ═══════════════════════════════════════════
--- SETTINGS TAB (built last → order: Home, Main, Misc, Settings)
--- ═══════════════════════════════════════════
-local SettingsTab = Window:MakeTab("Settings") do
-	local General = SettingsTab:Section({ Title = "General" })
-
-	General:Toggle({
-		Title = "Notifications",
-		Content = "Show load and event notifications",
-		Default = true,
-		Callback = function(v) end,
-		Flag = "ReHub/Notifications"
-	})
-
-	General:Toggle({
-		Title = "Anti-Idle",
-		Content = "Prevent automatic kick on idle",
-		Default = false,
-		Callback = function(v)
-			if v and not antiIdleConn then
-				antiIdleConn = LocalPlayer.Idled:Connect(function()
-					local VirtualUser = game:GetService("VirtualUser")
-					VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-					task.wait(1)
-					VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-				end)
-			elseif not v and antiIdleConn then
-				antiIdleConn:Disconnect()
-				antiIdleConn = nil
-			end
-		end,
-		Flag = "ReHub/AntiIdle"
-	})
-
-	local Visuals = SettingsTab:Section({ Title = "Visuals" })
-
-	Visuals:Dropdown({
-		Title = "Theme Accent",
-		Options = Library:GetThemeNames(),
-		Default = { "Violet" },
-		Callback = function(v)
-			if type(v) == "string" then
-				Library:SetTheme(v)
-			end
-		end
-	})
-
-	Visuals:Slider({
-		Title = "UI Transparency",
-		Min = 0,
-		Max = 100,
-		Increment = 5,
-		Default = 0,
-		Callback = function(v)
-			Library:SetTransparency(v)
-		end
-	})
-
-	local Advanced = SettingsTab:Section({ Title = "Advanced" })
-
-	local lastErr = Advanced:Paragraph({ Title = "Diagnostics", Content = "No errors recorded" })
-
-	local function renderErrors()
-		local errs = Library:GetErrors()
-		local e = errs[#errs]
-		if e then
-			lastErr:Set({
-				Title = "Diagnostics (" .. #errs .. ") — " .. tostring(e.source),
-				Content = tostring(e.t) .. " · " .. tostring(e.message),
-			})
-		else
-			lastErr:Set({ Title = "Diagnostics", Content = "No errors recorded" })
-		end
-	end
-	renderErrors()
-	if type(Library.WatchErrors) == "function" then
-		Library:WatchErrors(function()
-			renderErrors()
-		end)
-	end
-
-	Advanced:Button({
-		Title = "Refresh Errors",
-		Content = "Show the latest recorded error",
-		Callback = function()
-			renderErrors()
-		end
-	})
-
-	Advanced:Button({
-		Title = "Copy Errors",
-		Content = "Copy error log for bug reports",
-		Callback = function()
-			local ok, json = pcall(function()
-				return game:GetService("HttpService"):JSONEncode(Library:GetErrors())
-			end)
-			if ok and type(setclipboard) == "function" then
-				pcall(setclipboard, json)
-				Library:Notify({ Title = "Re: Hub", Content = "Error log copied", Delay = 3 })
-			else
-				Library:Notify({ Title = "Re: Hub", Content = "Copy unavailable here", Delay = 3 })
-			end
-		end
-	})
-
-	Advanced:Button({
-		Title = "Clear Errors",
-		Content = "Empty the error log",
-		Callback = function()
-			Library:ClearErrors()
-			lastErr:Set({ Title = "Diagnostics", Content = "No errors recorded" })
-		end
-	})
-
-	Advanced:Button({
-		Title = "Destroy UI",
-		Content = "Completely remove Re: Hub",
-		Callback = function()
-			Window:CloseUI()
-		end
-	})
-
-	Advanced:Button({
-		Title = "Rejoin Server",
-		Content = "Reconnect to current server",
-		Callback = function()
-			game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
-		end
-	})
-end
-
+Window:Finalize(metadata.Shortcuts)
 return Library
