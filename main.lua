@@ -4,8 +4,8 @@
 local Bootstrap = ...
 if type(Bootstrap) ~= "table" then Bootstrap = {} end
 local RELEASE = {
-	DataBase = "0b7bd6e5714d4df586c0eadc60ea0c4606a3027b",
-	Hub = "d0f1b3438bb04dfb3359c9a488324c1936a17cf5",
+	DataBase = "3efed027f86015729e8fec8423b58e1100a48bc6",
+	Hub = "bf9d7fbee77f57d0e0779953b4f0d6b9198d8864",
 }
 local LIB_URL = "https://raw.githubusercontent.com/Whotong/DataBase/" .. RELEASE.DataBase .. "/Library/ReHubLib.lua"
 local LIST_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/" .. RELEASE.Hub .. "/gamelist.lua"
@@ -13,7 +13,7 @@ local LIST_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/" .. RELEASE.
 local Experiences = {
 	[10759337137] = { Title = "Last Stop [Beta]", Shortcuts = { "AutoGrab", "esp/esp-items", "recon-dashboard/refresh-counts" } },
 	[10563114921] = { Title = "Steal an Egg", Shortcuts = { "AutoCollect", "AutoHatch", "AutoClaim" } },
-	[10768292556] = { Title = "[🌱] Grow a Plant", Shortcuts = { "EconomyRefresh", "InspectGarden", "SeedStock" } },
+	[10768292556] = { Title = "[🌱] Grow a Plant", Shortcuts = {} },
 }
 -- Supply real public URLs here when available. Empty links are omitted.
 local Links = { Discord = "", Website = "" }
