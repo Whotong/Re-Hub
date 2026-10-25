@@ -5,7 +5,7 @@ local Bootstrap = ...
 if type(Bootstrap) ~= "table" then Bootstrap = {} end
 local RELEASE = {
 	DataBase = "9a2469647504aab46be21e4bcdff782a31861bbb",
-	Hub = "260629851aa31c66d2a7bd0c534fd516c6138d29",
+	Hub = "bba64f42832541a29aca90d85e7ebfe3be219dad",
 }
 local LIB_URL = "https://raw.githubusercontent.com/Whotong/DataBase/" .. RELEASE.DataBase .. "/Library/ReHubLib.lua"
 local LIST_URL = "https://raw.githubusercontent.com/Whotong/Re-Hub/" .. RELEASE.Hub .. "/gamelist.lua"
